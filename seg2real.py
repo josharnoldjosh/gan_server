@@ -89,6 +89,13 @@ class Seg2Real:
                 else:                   
                     seg_img[i][j] = 156
 
+        for i in range(ground_truth_image.shape[0]):
+            for j in range(ground_truth_image.shape[1]):
+                if ground_truth_image[i][j] in self.map.keys():
+                    ground_truth_image[i][j] = self.map[ground_truth_image[i][j]]
+                else:                   
+                    ground_truth_image[i][j] = 156
+
         # calculate metrics
         self.calculate_metrics(ground_truth_image, seg_img)
 
@@ -121,8 +128,15 @@ class Seg2Real:
     def calculate_metrics(self, ground_truth_image, drawer_image):
         if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
             return
+        
+        np.savetxt('test1.txt', ground_truth_image, fmt='%d')
+        np.savetxt('test2.txt', drawer_image, fmt='%d')
 
-        print(ground_truth_image.shape, drawer_image.shape) 
+        print(ground_truth_image.shape, drawer_image.shape)
+
+        print(ground_truth_image, drawer_image)
+
+        print(ground_truth_image.dtype, drawer_image.dtype)
 
         pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 5)     
         mean_accuracy = self.mean_accuracy(ground_truth_image, drawer_image, 5)
