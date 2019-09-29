@@ -26,8 +26,14 @@ model = Seg2Real()
 @app.route('/get_image', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_image():    
     image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg    
-    print('test', image_name)
+    print('test', image_name)    
+
     image = Image.open('landscape_target/'+image_name)
+    if image.size[0] < image.size[1]:
+        image = image.crop((0, 0, image.size[0], image.size[0]))
+    else:
+        image = image.crop((0, 0, image.size[1], image.size[1]))
+
     buffered = BytesIO()
     image.save(buffered, format="png")        
     img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')
@@ -45,30 +51,6 @@ def peek():
         img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')
         return img_str
     return ""
-
-# @app.route('/save_image', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
-# def save_image():
-#     if request.method == 'POST':
-
-#         data = request.form['file']
-#         py_data = data.replace('data:image/png;base64,','')
-#         image = Image.open(BytesIO(base64.b64decode(py_data))).convert('RGB') # Drop alpha
-
-#         unique_id = request.form['unique_id']
-#         turn_idx = request.form['turn_idx']
-#         image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg    
-#         print('test', image_name)
-#         image = Image.open('landscape_target/'+image_name)
-
-#         image.save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
-
-#         (red, green, blue) = image.split()        
-#         image = red.convert('L')
-#         image = model.seg2real(image, image)    
-#         buffered = BytesIO()
-#         image.save(buffered, format="png")        
-#         image.save("./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg")
-#     return ""
 
 @app.route('/', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def root():
@@ -91,6 +73,10 @@ def root():
         ground_truth = numpy.ones((350,348),dtype=int)
         if image_name != "undefined":
             ground_truth = Image.open('landscape_target/'+image_name).convert('L')
+            if ground_truth.size[0] < ground_truth.size[1]:
+                ground_truth = ground_truth.crop((0, 0, ground_truth.size[0], ground_truth.size[0])).resize((348, 350))
+            else:
+                ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((348, 350))  
 
         # pass through seg2real
         image = model.seg2real(ground_truth, image)
