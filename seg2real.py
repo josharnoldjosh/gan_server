@@ -97,7 +97,7 @@ class Seg2Real:
                     ground_truth_image[i][j] = 156
 
         # calculate metrics
-        self.calculate_metrics(ground_truth_image, seg_img)
+        scores = self.calculate_metrics(ground_truth_image, seg_img)
 
 
         seg_img = Image.fromarray(seg_img)
@@ -123,11 +123,11 @@ class Seg2Real:
         
         synthetic_img = Image.fromarray(generated_img[0])
 
-        return synthetic_img
+        return synthetic_img, scores
 
     def calculate_metrics(self, ground_truth_image, drawer_image):
         if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
-            return
+            return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
         
         np.savetxt('test1.txt', ground_truth_image, fmt='%d')
         np.savetxt('test2.txt', drawer_image, fmt='%d')
@@ -148,7 +148,7 @@ class Seg2Real:
         print("Mean Accuracy: {}".format(mean_accuracy))
         print("Mean IoU: {}".format(mean_IoU))
         print("Mean IoU: {}".format(class_IoU))
-        return
+        return {"pixel_acc":pixel_accuracy, "mean_acc":mean_accuracy, "mean_iou":mean_IoU, "mean_iou_class":class_IoU}
 
         #Fork the function from deeplabv2
     def _fast_hist(self, label_true, label_pred, n_class):

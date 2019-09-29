@@ -15,6 +15,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="4"
 from seg2real import Seg2Real
 
 import time
+import json
 
 # Init the server
 app = Flask(__name__)
@@ -79,7 +80,12 @@ def root():
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((348, 350))  
 
         # pass through seg2real
-        image = model.seg2real(ground_truth, image)
+        image, scores = model.seg2real(ground_truth, image)
+
+
+        # save scores        
+        with open("./saved_data/"+unique_id+"_"+turn_idx+'_score'+'.json', 'w') as f:
+            json.dump(scores, f)
         
         # save synthetic & return
         buffered = BytesIO()
