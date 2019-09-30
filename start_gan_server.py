@@ -53,6 +53,19 @@ def peek():
         return img_str
     return ""
 
+@app.route('/get_score', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
+def get_score():
+    if request.method == 'POST':
+        unique_id = request.form['unique_id']
+        turn_idx = request.form['turn_idx']
+        print(unique_id, turn_idx, "this is a test")
+        with open("./saved_data/"+unique_id+"_"+str(int(turn_idx)-1)+'_score'+'.json', 'r') as f:
+            print(f)
+            result = json.load(f)
+            print(result)
+            return result
+    return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
+
 @app.route('/', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def root():
     if request.method == 'POST':              
@@ -80,12 +93,15 @@ def root():
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((348, 350))  
 
         # pass through seg2real
-        image, scores = model.seg2real(ground_truth, image)
+        (image, scores) = model.seg2real(ground_truth, image)
 
+        print(scores, "scores?")
 
         # save scores        
-        with open("./saved_data/"+unique_id+"_"+turn_idx+'_score'+'.json', 'w') as f:
+        scores_file_path = "./saved_data/"+unique_id+"_"+turn_idx+'_score'+'.json'        
+        with open(scores_file_path, 'w') as f:
             json.dump(scores, f)
+            print("saved to", scores_file_path)
         
         # save synthetic & return
         buffered = BytesIO()

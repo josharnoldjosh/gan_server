@@ -123,9 +123,11 @@ class Seg2Real:
         
         synthetic_img = Image.fromarray(generated_img[0])
 
-        return synthetic_img, scores
+        return (synthetic_img, scores)
 
     def calculate_metrics(self, ground_truth_image, drawer_image):
+        return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
+
         if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
             return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
         
@@ -133,9 +135,7 @@ class Seg2Real:
         np.savetxt('test2.txt', drawer_image, fmt='%d')
 
         print(ground_truth_image.shape, drawer_image.shape)
-
         print(ground_truth_image, drawer_image)
-
         print(ground_truth_image.dtype, drawer_image.dtype)
 
         pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 5)     
@@ -143,11 +143,6 @@ class Seg2Real:
         mean_IoU = self.mean_IoU(ground_truth_image, drawer_image, 5)     
         class_IoU = self.class_IoU(ground_truth_image, drawer_image, 5)
 
-        print("———————————————————————————————————")
-        print("pixel accurac: {}".format(pixel_accuracy))
-        print("Mean Accuracy: {}".format(mean_accuracy))
-        print("Mean IoU: {}".format(mean_IoU))
-        print("Mean IoU: {}".format(class_IoU))
         return {"pixel_acc":pixel_accuracy, "mean_acc":mean_accuracy, "mean_iou":mean_IoU, "mean_iou_class":class_IoU}
 
         #Fork the function from deeplabv2
