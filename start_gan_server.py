@@ -86,7 +86,7 @@ def root():
         # get ground truth
         ground_truth = numpy.ones((350,348),dtype=int)
         if image_name != "undefined":
-            ground_truth = Image.open('landscape_target/'+image_name).convert('L')
+            ground_truth = Image.open('landscape_target/'+image_name.replace('.jpg', '_semantic.png')).convert('L')
             if ground_truth.size[0] < ground_truth.size[1]:
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[0], ground_truth.size[0])).resize((348, 350))
             else:

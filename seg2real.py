@@ -81,20 +81,20 @@ class Seg2Real:
         seg_img = np.array(seg_img)
         ground_truth_image = np.array(ground_truth_image)
 
+        print(seg_img)
+
         # gonna have to update this badboy
         for i in range(seg_img.shape[0]):
             for j in range(seg_img.shape[1]):
+                if seg_img[i][j] == 0:
+                    seg_img[i][j] = 110
+                    
                 if seg_img[i][j] in self.map.keys():
                     seg_img[i][j] = self.map[seg_img[i][j]]
                 else:                   
                     seg_img[i][j] = 156
 
-        for i in range(ground_truth_image.shape[0]):
-            for j in range(ground_truth_image.shape[1]):
-                if ground_truth_image[i][j] in self.map.keys():
-                    ground_truth_image[i][j] = self.map[ground_truth_image[i][j]]
-                else:                   
-                    ground_truth_image[i][j] = 156
+        print(seg_img)
 
         # calculate metrics
         scores = self.calculate_metrics(ground_truth_image, seg_img)
@@ -126,7 +126,7 @@ class Seg2Real:
         return (synthetic_img, scores)
 
     def calculate_metrics(self, ground_truth_image, drawer_image):
-        return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
+        # return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
 
         if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
             return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
@@ -138,10 +138,10 @@ class Seg2Real:
         print(ground_truth_image, drawer_image)
         print(ground_truth_image.dtype, drawer_image.dtype)
 
-        pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 5)     
-        mean_accuracy = self.mean_accuracy(ground_truth_image, drawer_image, 5)
-        mean_IoU = self.mean_IoU(ground_truth_image, drawer_image, 5)     
-        class_IoU = self.class_IoU(ground_truth_image, drawer_image, 5)
+        pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 182)     
+        mean_accuracy = self.mean_accuracy(ground_truth_image, drawer_image, 182)
+        mean_IoU = self.mean_IoU(ground_truth_image, drawer_image, 182)     
+        class_IoU = self.class_IoU(ground_truth_image, drawer_image, 182)
 
         return {"pixel_acc":pixel_accuracy, "mean_acc":mean_accuracy, "mean_iou":mean_IoU, "mean_iou_class":class_IoU}
 
