@@ -95,7 +95,7 @@ def root():
         # pass through seg2real
         (image, scores) = model.seg2real(ground_truth, image)
 
-        print(scores, "scores?")
+        # print(scores, "scores?")
 
         # save scores        
         scores_file_path = "./saved_data/"+unique_id+"_"+turn_idx+'_score'+'.json'        

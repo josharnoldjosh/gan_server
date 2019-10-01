@@ -134,9 +134,9 @@ class Seg2Real:
         np.savetxt('test1.txt', ground_truth_image, fmt='%d')
         np.savetxt('test2.txt', drawer_image, fmt='%d')
 
-        print(ground_truth_image.shape, drawer_image.shape)
-        print(ground_truth_image, drawer_image)
-        print(ground_truth_image.dtype, drawer_image.dtype)
+        # print(ground_truth_image.shape, drawer_image.shape)
+        # print(ground_truth_image, drawer_image)
+        # print(ground_truth_image.dtype, drawer_image.dtype)
 
         pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 182)     
         mean_accuracy = self.mean_accuracy(ground_truth_image, drawer_image, 182)
