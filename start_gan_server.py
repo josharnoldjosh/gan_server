@@ -46,11 +46,21 @@ def peek():
         unique_id = request.form['unique_id']
         turn_idx = request.form['turn_idx']        
         path_file = "./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg"
-        image = Image.open(path_file)
+        image = None
+
+        while not os.path.exists(path_file) and turn_idx > 0:            
+            path_file = "./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg"
+            turn_idx -= 1
+
+        if os.path.exists(path_file):
+            image = Image.open(path_file)
+        else:
+            image = Image.new('L', (348, 350)) 
+
         buffered = BytesIO()
         image.save(buffered, format="png")                
         img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')
-        return img_str
+        return img_str                
     return ""
 
 @app.route('/get_score', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
@@ -84,18 +94,18 @@ def root():
         image.save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
 
         # get ground truth
-        ground_truth = numpy.ones((350,348),dtype=int)
+        ground_truth = numpy.ones((350,350),dtype=int)
         if image_name != "undefined":
             ground_truth = Image.open('landscape_target/'+image_name.replace('.jpg', '_semantic.png')).convert('L')
             if ground_truth.size[0] < ground_truth.size[1]:
-                ground_truth = ground_truth.crop((0, 0, ground_truth.size[0], ground_truth.size[0])).resize((348, 350))
+                ground_truth = ground_truth.crop((0, 0, ground_truth.size[0], ground_truth.size[0])).resize((350, 350))
             else:
-                ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((348, 350))  
+                ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((350, 350))  
 
         # pass through seg2real
         (image, scores) = model.seg2real(ground_truth, image)
 
-        # print(scores, "scores?")
+        print(scores)
 
         # save scores        
         scores_file_path = "./saved_data/"+unique_id+"_"+turn_idx+'_score'+'.json'        
