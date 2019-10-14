@@ -44,13 +44,15 @@ def get_image():
 def peek():
     if request.method == 'POST':
         unique_id = request.form['unique_id']
-        turn_idx = request.form['turn_idx']        
-        path_file = "./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg"
+        turn_idx = int(request.form['turn_idx'])        
+        path_file = "./saved_data/"+unique_id+"_"+str(turn_idx)+"_synthetic.jpg"
         image = None
 
-        while not os.path.exists(path_file) and turn_idx > 0:            
-            path_file = "./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg"
+        while not os.path.exists(path_file) and turn_idx >= 0:            
+            path_file = "./saved_data/"+unique_id+"_"+str(turn_idx)+"_synthetic.jpg"
             turn_idx -= 1
+
+        print(path_file)
 
         if os.path.exists(path_file):
             image = Image.open(path_file)
@@ -67,13 +69,19 @@ def peek():
 def get_score():
     if request.method == 'POST':
         unique_id = request.form['unique_id']
-        turn_idx = request.form['turn_idx']
-        print(unique_id, turn_idx, "this is a test")
-        with open("./saved_data/"+unique_id+"_"+str(int(turn_idx)-1)+'_score'+'.json', 'r') as f:
-            print(f)
-            result = json.load(f)
-            print(result)
-            return result
+        turn_idx = int(request.form['turn_idx'])
+
+        # try to find the last score file that exists, go into negative score files
+        while not os.path.exists("./saved_data/"+unique_id+"_"+str(turn_idx)+'_score'+'.json') and turn_idx > -7:
+            turn_idx -= 1
+
+        # if our score file is positive we know its legit
+        if turn_idx  >= 0:
+            with open("./saved_data/"+unique_id+"_"+str(turn_idx)+'_score'+'.json', 'r') as f:
+                print(f)
+                result = json.load(f)
+                print(result)
+                return result
     return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
 
 @app.route('/', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
@@ -84,14 +92,19 @@ def root():
         data = request.form['file']
         unique_id = request.form['unique_id']
         turn_idx = request.form['turn_idx']
-        image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg    
-
-        # save real
+        image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg  
         py_data = data.replace('data:image/png;base64,','')
-        image = Image.open(BytesIO(base64.b64decode(py_data))).convert('RGB') # Drop alpha
+
+        image = Image.open(BytesIO(base64.b64decode(py_data)))
+
+        # temp save
+        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label_alpha.png")
+
+        image = image.convert('RGB') # Drop alpha  
+        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.jpg")
+
         (red, green, blue) = image.split()        
         image = red.convert('L')
-        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
 
         # get ground truth
         ground_truth = numpy.ones((350,350),dtype=int)
@@ -103,7 +116,10 @@ def root():
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((350, 350))  
 
         # pass through seg2real
-        (image, scores) = model.seg2real(ground_truth, image)
+        (image, scores, seg_img) = model.seg2real(ground_truth, image)
+
+        # save real
+        seg_img.save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
 
         print(scores)
 

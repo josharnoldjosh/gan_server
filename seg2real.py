@@ -19,6 +19,7 @@ from io import StringIO
 from PIL import Image
 from io import BytesIO
 import base64
+from math import sqrt
 
 class Seg2Real:
 
@@ -66,6 +67,132 @@ class Seg2Real:
         }
         return
 
+    def preprocess_segmap(self, seg_img):
+        converting_map = {
+            110:156,
+            60:154,
+            128:134,
+            99:149,
+            108:126, #
+            242:105,
+            214:14,
+            145:124,
+            237:158,
+            101:147, #
+            70:96,
+            135:168,
+            65:148,
+            209:143,
+            150:110,
+            83:125,
+            120:135,
+            141:119,
+            156:161,
+            82:177,
+            230:118,
+            113:123,
+            232:162
+        }
+        for i in range(seg_img.shape[0]):
+            for j in range(seg_img.shape[1]):
+                if seg_img[i][j] == 0:
+                    seg_img[i][j] = 110
+                        
+                if seg_img[i][j] in converting_map.keys():
+                    seg_img[i][j] = converting_map[seg_img[i][j]]
+    #             else:                   
+    #                 seg_img[i][j] = 156
+        
+        return seg_img
+
+    def closest_dominant(self, sample_matrix, d_class, x,y):
+        #First extract all the (x,y) positions of a certain label
+        min_distance = 10000
+        min_class = None
+        for sample_class in d_class:
+            sample_class_indexes = np.where(sample_matrix==sample_class)
+            points = [(x,y) for x,y in zip(sample_class_indexes[0],sample_class_indexes[1])]
+            points.sort(key = lambda p: sqrt((p[0] - x)**2 + (p[1] - y)**2))
+            current_distance = sqrt((points[0][0] - x)**2 + (points[0][1] - y)**2)
+            if current_distance < min_distance:
+                min_class = sample_class
+                min_distance = current_distance
+        return min_class
+
+    def merge_noisy_pixels(self, sample_matrix, d_class,kernel_width=3, kernel_height=3,sliding_size=1):
+        #First extract all the (x,y) positions of a certain label
+        i = 0
+        j = 0
+        converted_pixels = 0
+        while i + kernel_width <= sample_matrix.shape[1]:
+            while j + kernel_height <= sample_matrix.shape[0]:
+                current_window = sample_matrix[j:j+kernel_width,i:i+kernel_height]
+                current_window_list = current_window.flatten().tolist()
+                # Check whether there is unknown labels in current_window
+                current_labels = set(current_window_list)
+                if not current_labels.issubset(set(d_class)):
+                    #replace the noisy labels with the closes 
+                    d_class_subset = list(current_labels.intersection(set(d_class)))
+                    # replace the noisy labels with the dominant class 
+                    d_class_subset.sort(key = lambda p : current_window_list.count(p), reverse=True)
+                    dominant_d_class = d_class_subset[0]
+                    sample_matrix[j:j+kernel_width][i:i+kernel_height] = dominant_d_class
+                    mask = ~ np.isin(current_window, d_class)
+                    converted_pixels += np.sum(mask)
+                    current_window[mask] = dominant_d_class
+                    sample_matrix[j:j+kernel_width,i:i+kernel_height] = current_window
+                j += sliding_size
+            i += sliding_size
+            j = 0
+        return sample_matrix
+       
+    def smooth_image(self, raw_img, gt_img, dominant_thred=2000):
+        """
+        The new smooth function for semantic image from drawer
+        """
+        #Preprocess with segmentation map
+        raw_img = self.preprocess_segmap(raw_img)
+        
+        #Define the landscape labels
+        landscape_labels = [110, 124, 125, 135, 139, 148, 14, 105, 119, 126, 134, 147, 149, 154, 156, 158, 161, 177, 96, 118, 123, 162, 168, 181]
+        
+        #Find dominant labels in the image
+        a,b= np.histogram(gt_img,bins=np.unique(gt_img))
+        result = np.where(a > dominant_thred)
+        dominant_class = []
+        for x in range(result[0].shape[0]):
+            if b[result[0][x]] in landscape_labels:
+                dominant_class.append(b[result[0][x]])
+        
+        result_img = self.merge_noisy_pixels(raw_img,dominant_class)
+        
+        return result_img
+
+    def unionCategory_RelevantPos(self, label_gt, label_pred, n_class):
+        hist = np.zeros((n_class, n_class))
+        #loop through the matrix row by row
+        for lt, lp in zip(label_gt, label_pred):
+            hist += _fast_hist(lt.flatten(), lp.flatten(), n_class)
+        
+        #print(hist)
+        iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
+        
+        #print(iu)
+        
+    #     #loop through the list of items and identify the categories
+    #     intersect_labels = np.where(iu > 0)
+    #     union_labels = np.where(~np.isnan(iu))
+    #     for l in np.nditer(intersect_labels):
+    #         gt_mask = np.zeros(label_gt.shape,dtype=int)
+    #         pred_mask = np.zeros(label_pred.shape,dtype=int)
+    #         #Get the masks of the label in gt_matrix
+    #         gt_label_map = label_gt == l
+    #         gt_mask[gt_label_map]=1
+    #         #Get the masks of the label in pred_matrix
+    #         pred_label_map = 
+    #         break
+
+
     def seg2real(self, ground_truth_image, seg_img):
         """
         Given a saved semantic segmentation labeling image path, this function
@@ -96,15 +223,15 @@ class Seg2Real:
                 else:                   
                     seg_img[i][j] = 156
 
+        # seg_img = self.smooth_image(seg_img, ground_truth_image)
+        # print(seg_img)
+
         print("ground_truth_image", ground_truth_image)
         print("——————")
         print("seg_img", seg_img) 
 
-
-
         # calculate metrics
         scores = self.calculate_metrics(ground_truth_image, seg_img)
-
 
         seg_img = Image.fromarray(seg_img)
 
@@ -129,7 +256,7 @@ class Seg2Real:
         
         synthetic_img = Image.fromarray(generated_img[0])
 
-        return (synthetic_img, scores)
+        return (synthetic_img, scores, seg_img)
 
     def calculate_metrics(self, ground_truth_image, drawer_image):
         # return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
