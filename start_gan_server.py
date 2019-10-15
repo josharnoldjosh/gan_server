@@ -101,10 +101,10 @@ def root():
         image.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label_alpha.png")
 
         image = image.convert('RGB') # Drop alpha  
-        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.jpg")
-
+        image.resize((350, 350)).save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.jpg")
         (red, green, blue) = image.split()        
         image = red.convert('L')
+        
 
         # get ground truth
         ground_truth = numpy.ones((350,350),dtype=int)
@@ -118,8 +118,8 @@ def root():
         # pass through seg2real
         (image, scores, seg_img) = model.seg2real(ground_truth, image)
 
-        # save real
-        seg_img.save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
+        # save real        
+        seg_img.resize((350, 350)).save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
 
         print(scores)
 

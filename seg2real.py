@@ -265,8 +265,8 @@ class Seg2Real:
             print("SHAPES NOT EQUAL OR IMAGE DOES NOT EXIST")
             return {"pixel_acc":0, "mean_acc":0, "mean_iou":0}
         
-        np.savetxt('test1.txt', ground_truth_image, fmt='%d')
-        np.savetxt('test2.txt', drawer_image, fmt='%d')
+        # np.savetxt('test1.txt', ground_truth_image, fmt='%d')
+        # np.savetxt('test2.txt', drawer_image, fmt='%d')
 
         # print(ground_truth_image.shape, drawer_image.shape)
         # print(ground_truth_image, drawer_image)
