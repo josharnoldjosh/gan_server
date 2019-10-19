@@ -21,6 +21,10 @@ from io import BytesIO
 import base64
 from math import sqrt
 
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib import colors
+
 class Seg2Real:
 
     def __init__(self):     
@@ -100,9 +104,6 @@ class Seg2Real:
                         
                 if seg_img[i][j] in converting_map.keys():
                     seg_img[i][j] = converting_map[seg_img[i][j]]
-    #             else:                   
-    #                 seg_img[i][j] = 156
-        
         return seg_img
 
     def closest_dominant(self, sample_matrix, d_class, x,y):
@@ -179,20 +180,6 @@ class Seg2Real:
         
         #print(iu)
         
-    #     #loop through the list of items and identify the categories
-    #     intersect_labels = np.where(iu > 0)
-    #     union_labels = np.where(~np.isnan(iu))
-    #     for l in np.nditer(intersect_labels):
-    #         gt_mask = np.zeros(label_gt.shape,dtype=int)
-    #         pred_mask = np.zeros(label_pred.shape,dtype=int)
-    #         #Get the masks of the label in gt_matrix
-    #         gt_label_map = label_gt == l
-    #         gt_mask[gt_label_map]=1
-    #         #Get the masks of the label in pred_matrix
-    #         pred_label_map = 
-    #         break
-
-
     def seg2real(self, ground_truth_image, seg_img):
         """
         Given a saved semantic segmentation labeling image path, this function
@@ -212,18 +199,19 @@ class Seg2Real:
         seg_img = np.array(seg_img)
         ground_truth_image = np.array(ground_truth_image)
         
+        # currently there is no smoothing
         # gonna have to update this badboy
-        for i in range(seg_img.shape[0]):
-            for j in range(seg_img.shape[1]):
-                if seg_img[i][j] == 0:
-                    seg_img[i][j] = 110
+        # for i in range(seg_img.shape[0]):
+        #     for j in range(seg_img.shape[1]):
+        #         if seg_img[i][j] == 0:
+        #             seg_img[i][j] = 110
                     
-                if seg_img[i][j] in self.map.keys():
-                    seg_img[i][j] = self.map[seg_img[i][j]]
-                else:                   
-                    seg_img[i][j] = 156
+        #         if seg_img[i][j] in self.map.keys():
+        #             seg_img[i][j] = self.map[seg_img[i][j]]
+        #         else:                   
+        #             seg_img[i][j] = 156
 
-        # seg_img = self.smooth_image(seg_img, ground_truth_image)
+        # seg_img = self.best_smooth_method(seg_img, ground_truth_image)
         # print(seg_img)
 
         print("ground_truth_image", ground_truth_image)
@@ -331,6 +319,69 @@ class Seg2Real:
         cls_iu = dict(zip(range(n_class), iu))
         
         return cls_iu
+    
+    def best_smooth_method(self, image, dominant_thred=1000):
+        r,g,b = cv2.split(image)
+
+
+        #Find dominant labels in the image
+        unique_class, unique_counts = np.unique(r, return_counts=True)
+        #Need to smooth gt_labels as well
+        result = np.where(unique_counts > dominant_thred)
+        dominant_class = unique_class[result].tolist()
+        num_cluster = len(dominant_class)
+
+        #Reshape the image
+        image_2D = image.reshape((image.shape[0]*image.shape[1],3))
+
+        # convert to np.float32
+        image_2D = np.float32(image_2D)
+
+        #define criteria
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+        ret,label,center = cv2.kmeans(image_2D, num_cluster, None,criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+
+        # Now convert back into uint8, and make original image
+        center = np.uint8(center)
+        
+        #Mapping the segmented image to labels
+        drawing2landscape = [
+            ([0, 0, 0],156), #sky
+            ([110, 180, 232], 156),#sky
+            ([60, 83, 163], 154), #sea
+            ([128, 119, 97], 134), #mountain
+            ([99, 95, 93], 149), #rock
+            ([108, 148, 96], 126), #hill
+            ([242, 218, 227], 105), #clouds
+            ([214, 199, 124], 14), #sand
+            ([145, 132, 145], 124), #gravel
+            ([237, 237, 237], 158), #snow
+            ([101, 163, 152], 147), #river
+            ([70, 150, 50], 96), #bush
+            ([135, 171, 111], 168), #tree
+            ([65, 74, 74], 148), #road
+            ([150, 126, 84], 110), #dirt 
+            ([120, 75, 38], 135), #mud 
+            ([141, 159, 184], 119), #fog 
+            ([156, 156, 156], 161), #stone
+            ([82, 107, 217], 177), #water
+            ([230, 190, 48], 118), #flower
+            ([113, 204, 43], 123), #grass
+            ([232, 212, 35], 162), #straw
+        ]
+
+        #Find the closest labels
+        label = label.reshape((image.shape[:2]))
+
+        #map label to corresponding tag
+        converstion = {}
+        for i, c in enumerate(center):
+            #sort the defined centers
+            drawing2landscape.sort(key = lambda p: sqrt((p[0][0] - c[0])**2 + (p[0][1] - c[1])**2 + (p[0][2] - c[2])**2))
+            #construct the mapping
+            label[np.where(label==i)] = drawing2landscape[0][1]
+
+        return label
 
 if __name__ == '__main__':    
     ground_truth = Image.open('./test1.png').convert('L')
