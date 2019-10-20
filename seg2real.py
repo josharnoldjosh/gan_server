@@ -25,6 +25,11 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib import colors
 
+from skimage import io, morphology, measure
+from scipy import ndimage
+from itertools import permutations
+import cv2
+
 class Seg2Real:
 
     def __init__(self):     
@@ -146,57 +151,14 @@ class Seg2Real:
             i += sliding_size
             j = 0
         return sample_matrix
-       
-    def smooth_image(self, raw_img, gt_img, dominant_thred=2000):
-        """
-        The new smooth function for semantic image from drawer
-        """
-        #Preprocess with segmentation map
-        raw_img = self.preprocess_segmap(raw_img)
-        
-        #Define the landscape labels
-        landscape_labels = [110, 124, 125, 135, 139, 148, 14, 105, 119, 126, 134, 147, 149, 154, 156, 158, 161, 177, 96, 118, 123, 162, 168, 181]
-        
-        #Find dominant labels in the image
-        a,b= np.histogram(gt_img,bins=np.unique(gt_img))
-        result = np.where(a > dominant_thred)
-        dominant_class = []
-        for x in range(result[0].shape[0]):
-            if b[result[0][x]] in landscape_labels:
-                dominant_class.append(b[result[0][x]])
-        
-        result_img = self.merge_noisy_pixels(raw_img,dominant_class)
-        
-        return result_img
-
-    def unionCategory_RelevantPos(self, label_gt, label_pred, n_class):
-        hist = np.zeros((n_class, n_class))
-        #loop through the matrix row by row
-        for lt, lp in zip(label_gt, label_pred):
-            hist += _fast_hist(lt.flatten(), lp.flatten(), n_class)
-        
-        #print(hist)
-        iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
-        
-        #print(iu)
         
     def seg2real(self, ground_truth_image, seg_img):
-        """
-        Given a saved semantic segmentation labeling image path, this function
-        will load that semantic segmentation image and generate a synthetic real image
-        from the pretrained land scape model. The image will then be saved at target_path
-        Input:
-          image_path: path where you save your semantic label image
-          target_path: path where you will save your synthetic real image
-          self.opt: The configuration dict for models
-        """
-
         # resize image
         ground_truth_image = ground_truth_image.resize((350, 350))
-        seg_img = seg_img.resize((350, 350))
+        # seg_img = seg_img.resize((350, 350))
 
         # convert to array  
-        seg_img = np.array(seg_img)
+        # seg_img = np.array(seg_img)
         ground_truth_image = np.array(ground_truth_image)
         
         # currently there is no smoothing
@@ -211,9 +173,6 @@ class Seg2Real:
         #         else:                   
         #             seg_img[i][j] = 156
 
-        # seg_img = self.best_smooth_method(seg_img, ground_truth_image)
-        # print(seg_img)
-
         print("ground_truth_image", ground_truth_image)
         print("——————")
         print("seg_img", seg_img) 
@@ -221,7 +180,7 @@ class Seg2Real:
         # calculate metrics
         scores = self.calculate_metrics(ground_truth_image, seg_img)
 
-        seg_img = Image.fromarray(seg_img)
+        seg_img = Image.fromarray(np.uint8(seg_img))
 
         #Get data item
         # seg_img = Image.open(image_path)
@@ -263,11 +222,14 @@ class Seg2Real:
         pixel_accuracy = self.pixel_accuracy(ground_truth_image, drawer_image, 182)     
         mean_accuracy = self.mean_accuracy(ground_truth_image, drawer_image, 182)
         mean_IoU = self.mean_IoU(ground_truth_image, drawer_image, 182)     
-        class_IoU = self.class_IoU(ground_truth_image, drawer_image, 182)
+        # class_IoU = self.class_IoU(ground_truth_image, drawer_image, 182)
 
-        return {"pixel_acc":pixel_accuracy, "mean_acc":mean_accuracy, "mean_iou":mean_IoU}
+        co_draw_metric = self.gaugancodraw_eval_metrics(drawer_image, ground_truth_image, 182)
 
-        #Fork the function from deeplabv2
+        print("TEST", co_draw_metric)
+
+        return {"pixel_acc":pixel_accuracy, "mean_acc":mean_accuracy, "mean_iou":mean_IoU, "co_draw":co_draw_metric}
+        
     def _fast_hist(self, label_true, label_pred, n_class):
         mask = (label_true >= 0) & (label_true < n_class)
         hist = np.bincount(
@@ -276,7 +238,6 @@ class Seg2Real:
         ).reshape(n_class, n_class)
         #print(hist)
         return hist
-
     def pixel_accuracy(self, label_gt, label_pred, n_class):
         hist = np.zeros((n_class, n_class))
         #loop throught the matrix row by row
@@ -294,7 +255,6 @@ class Seg2Real:
         acc_cls = np.diag(hist) / hist.sum(axis=1)
         acc_cls = np.nanmean(acc_cls)
         return acc_cls
-    #Mean_IOU is the metrics that we want to use
     def mean_IoU(self, label_gt, label_pred, n_class):
         hist = np.zeros((n_class, n_class))
         #loop throught the matrix row by row
@@ -309,79 +269,172 @@ class Seg2Real:
         
         return mean_iu
 
-    def class_IoU(self, label_gt, label_pred, n_class):
-        hist = np.zeros((n_class, n_class))
-        #loop throught the matrix row by row
-        for lt, lp in zip(label_gt, label_pred):
-            hist += self._fast_hist(lt.flatten(), lp.flatten(), n_class)
+    def find_label_centers(self, image, shared_label, noisy_filter=1000):
+        """
+          find the centers of the labels in the image
+        """
+        image_shared = {l:None for l in shared_label}
+        #construct the center for draw_shared
+        for key in image_shared.keys():
+            mask = np.int_((image == key))
+            lbl = ndimage.label(mask)[0]
+            unique_labels, unique_counts = np.unique(lbl,return_counts=True)
+            filtered_labels = unique_labels[np.where(unique_counts > noisy_filter)]
+            filtered_labels = filtered_labels[np.where(filtered_labels > 0)]
+            
+            centers = ndimage.measurements.center_of_mass(mask, lbl, filtered_labels)
+            image_shared[key] = centers
+        return image_shared
+
+    def relevant_score(self, x,y):
+        """
+        x and y are two turples of the objects in drawed image and ground truth image.
+        """
         
-        iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
-        cls_iu = dict(zip(range(n_class), iu))
+        score_x =  1 if (x[0][0]-y[0][0])*(x[1][0]-y[1][0]) > 0 else 0 
+        score_y =  1 if (x[0][1]-y[0][1])*(x[1][1]-y[1][1]) > 0 else 0
         
-        return cls_iu
-    
-    def best_smooth_method(self, image, dominant_thred=1000):
-        r,g,b = cv2.split(image)
+        return score_x+score_y
 
+    def relevant_eval_metrics(self, draw_smooth, gt_smooth, g_smooth_thred=1000):
+        """
+        Compute the relevant_eval_metrics from draw_segments and ground_truth_segments
+        """ 
 
-        #Find dominant labels in the image
-        unique_class, unique_counts = np.unique(r, return_counts=True)
-        #Need to smooth gt_labels as well
-        result = np.where(unique_counts > dominant_thred)
-        dominant_class = unique_class[result].tolist()
-        num_cluster = len(dominant_class)
-
-        #Reshape the image
-        image_2D = image.reshape((image.shape[0]*image.shape[1],3))
-
-        # convert to np.float32
-        image_2D = np.float32(image_2D)
-
-        #define criteria
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-        ret,label,center = cv2.kmeans(image_2D, num_cluster, None,criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-
-        # Now convert back into uint8, and make original image
-        center = np.uint8(center)
+        #Now let's compute the relevant locations
+        draw_set = np.unique(draw_smooth).tolist()
+        print(draw_set)
+        gt_set = np.unique(gt_smooth).tolist()
+        print(gt_set)
+        shared_labels =  set(draw_set).intersection(set(gt_set))
+        print(shared_labels)
         
-        #Mapping the segmented image to labels
-        drawing2landscape = [
-            ([0, 0, 0],156), #sky
-            ([110, 180, 232], 156),#sky
-            ([60, 83, 163], 154), #sea
-            ([128, 119, 97], 134), #mountain
-            ([99, 95, 93], 149), #rock
-            ([108, 148, 96], 126), #hill
-            ([242, 218, 227], 105), #clouds
-            ([214, 199, 124], 14), #sand
-            ([145, 132, 145], 124), #gravel
-            ([237, 237, 237], 158), #snow
-            ([101, 163, 152], 147), #river
-            ([70, 150, 50], 96), #bush
-            ([135, 171, 111], 168), #tree
-            ([65, 74, 74], 148), #road
-            ([150, 126, 84], 110), #dirt 
-            ([120, 75, 38], 135), #mud 
-            ([141, 159, 184], 119), #fog 
-            ([156, 156, 156], 161), #stone
-            ([82, 107, 217], 177), #water
-            ([230, 190, 48], 118), #flower
-            ([113, 204, 43], 123), #grass
-            ([232, 212, 35], 162), #straw
-        ]
+        #Find the centers of each region in shared label
+        draw_shared = self.find_label_centers(draw_smooth, shared_labels)
+        gt_shared = self.find_label_centers(gt_smooth, shared_labels)
+        
+        #Find the centers of each region in unshared label
+        draw_unshared = self.find_label_centers(draw_smooth, set(draw_set)-shared_labels)
+        gt_unshared = self.find_label_centers(gt_smooth, set(gt_set)-shared_labels)
 
-        #Find the closest labels
-        label = label.reshape((image.shape[:2]))
+            
+        #Resolve the unmatched pairs between draw_shared and gt_shared
+        gt_draw_shared = self.pair_objects(draw_shared, gt_shared)
+        
+        #decouple the gt_draw_shared to a list of turples
+        shared_item_list = []
+        for key, value in gt_draw_shared.items():
+            for d_center,gt_center in zip(value['draw_center'],value['gt_center']):
+                shared_item_list.append((d_center, gt_center))
+        
+        #decouple the unshared objects to a list of turples
+        unshared_item_list = []
+        for key, value in draw_unshared.items():
+            unshared_item_list += value
+        for key, value in gt_unshared.items():
+            unshared_item_list += value
+            
+        #compute the numerator score
+        score = 0
+        for x in range(len(shared_item_list)):
+            for y in range(x+1, len(shared_item_list)):
+                score += self.relevant_score(shared_item_list[x], shared_item_list[y])
 
-        #map label to corresponding tag
-        converstion = {}
-        for i, c in enumerate(center):
-            #sort the defined centers
-            drawing2landscape.sort(key = lambda p: sqrt((p[0][0] - c[0])**2 + (p[0][1] - c[1])**2 + (p[0][2] - c[2])**2))
-            #construct the mapping
-            label[np.where(label==i)] = drawing2landscape[0][1]
+        #compute the denomenator
+        union = len(unshared_item_list)
+        #union = len(draw_unshared) + len(gt_unshared)
+        for key, value in gt_draw_shared.items():
+            union += value['max_num_objects']
+        intersection = len(shared_item_list)
+        
+        #print(score)
+        if intersection > 2:
+            final_score = score/(union*(intersection-1))
+        elif intersection == 1:
+            final_score = score/union
+        else:
+            final_score = 0
+        return final_score
+            
+    def gaugancodraw_eval_metrics(self,label_d, label_gt, n_class, g_smooth=True, g_smooth_thred=1000):
+        draw_smooth = label_d
+        draw_smooth[np.where(draw_smooth == 147)] = 177
+        draw_smooth[np.where(draw_smooth == 154)] = 177
+        if g_smooth:
+            g_unique_class, g_unique_counts = np.unique(label_gt, return_counts=True)
+            #Need to smooth gt_labels as well
 
-        return label
+            result = np.where(g_unique_counts > g_smooth_thred) #3000 is a bit too much
+            dominant_class = g_unique_class[result].tolist()
+            gt_smooth = self.merge_noisy_pixels(label_gt, dominant_class)
+            gt_smooth[np.where(gt_smooth == 147)] = 177
+            gt_smooth[np.where(gt_smooth == 154)] = 177
+        else:
+            gt_smooth = label_gt
+        #compute mean_IOU
+        score_1 = self.mean_IoU(gt_smooth,draw_smooth, n_class)
+        
+        #compute relevant_score
+        score_2 = self.relevant_eval_metrics(draw_smooth, gt_smooth)
+
+        final_score = 2*score_1+3*score_2
+        return final_score    
+
+    def pair_objects(self, draw_shared, gt_shared):
+        """
+        Pair the regions in drawer's image and the regions in groundtruth image based on the mean square distance.
+        TODO:
+        1. Rethink the way we pair the objects
+        """
+        gt_draw_shared = {}
+
+        for key in draw_shared.keys():
+            #check if the number maps
+            if len(draw_shared[key]) == len(gt_shared[key]) and len(draw_shared[key]) == 1:
+                gt_draw_shared[key] = {"draw_center": draw_shared[key], "gt_center": gt_shared[key], "max_num_objects": 1}
+            else:
+                #pair the centers
+                pair_regions = []
+                pair_index = []
+                for i, draw_c in enumerate(draw_shared[key]):
+                    for j, gt_c in enumerate(gt_shared[key]):
+                        pair_regions.append((draw_c, gt_c))
+                        pair_index.append((i,j))
+                #group all possible combinations of i,j together
+                if len(draw_shared[key]) < len(gt_shared[key]):
+                    perm = permutations(range(len(gt_shared[key])),len(draw_shared[key]))
+                    pair_candidates = []
+                    for p in perm:
+                        #form the groups
+                        pair_centers = []
+                        for i in range(len(draw_shared[key])):
+                            current_pair = (i,p[i])
+                            current_pair_index = pair_index.index(current_pair)
+                            current_pair_centers = pair_regions[current_pair_index]
+                            pair_centers.append(current_pair_centers)
+                        pair_candidates.append(pair_centers)
+                else:
+                    perm = permutations(range(len(draw_shared[key])),len(gt_shared[key]))
+                    pair_candidates = []
+                    for p in perm:
+                        #form the groups
+                        pair_centers = []
+                        for i in range(len(gt_shared[key])):
+                            current_pair = (p[i],i)
+                            current_pair_index = pair_index.index(current_pair)
+                            current_pair_centers = pair_regions[current_pair_index]
+                            pair_centers.append(current_pair_centers)
+                        pair_candidates.append(pair_centers)
+                
+                #sort pair_candidates based on their pair sum
+                pair_candidates.sort(key = lambda p: sum([sqrt((c[0][0]-c[1][0])**2 + (c[0][1]-c[1][1])**2) for c in p]))
+                
+                optimal_pair = pair_candidates[0]
+                paired_draw_centers = [x[0] for x in optimal_pair]
+                paired_gt_centers = [x[1] for x in optimal_pair]
+
+                gt_draw_shared[key] = {"draw_center": paired_draw_centers, "gt_center": paired_gt_centers, "max_num_objects": max(len(draw_shared[key]), len(gt_shared[key]))}
+        return gt_draw_shared
 
 if __name__ == '__main__':    
     ground_truth = Image.open('./test1.png').convert('L')
