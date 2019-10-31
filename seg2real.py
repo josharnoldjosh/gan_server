@@ -296,89 +296,115 @@ class Seg2Real:
         
         return score_x+score_y
 
-    def relevant_eval_metrics(self, draw_smooth, gt_smooth, g_smooth_thred=1000):
-        """
-        Compute the relevant_eval_metrics from draw_segments and ground_truth_segments
-        """ 
+    def relevant_eval_metrics(self, draw_raw, gt_raw, d_smooth=False, g_smooth=False, g_smooth_thred=1000, relevant_mode="unknown_count"):
+        if d_smooth:
+            #replace the river and sea label into water
+            draw_smooth = best_smooth_method(draw_raw)
+            draw_smooth[np.where(draw_smooth == 147)] = 177
+            draw_smooth[np.where(draw_smooth == 154)] = 177
+        else:
+            draw_smooth = draw_raw
 
-        #Now let's compute the relevant locations
+        if g_smooth:
+            g_unique_class, g_unique_counts = np.unique(gt_raw, return_counts=True)
+            #Need to smooth gt_labels as well
+
+            result = np.where(g_unique_counts > g_smooth_thred) #3000 is a bit too much
+            dominant_class = g_unique_class[result].tolist()
+            gt_smooth = merge_noisy_pixels(gt_raw,dominant_class)
+            gt_smooth[np.where(gt_smooth == 147)] = 177
+            gt_smooth[np.where(gt_smooth == 154)] = 177
+        else:
+            gt_smooth = gt_raw
+        
         draw_set = np.unique(draw_smooth).tolist()
-        print(draw_set)
+        #print("Unique Labels in draw_smooth: {}".format(draw_set))
         gt_set = np.unique(gt_smooth).tolist()
-        print(gt_set)
+        #print("Unique Labels in gt_smooth: {}".format(gt_set))
         shared_labels =  set(draw_set).intersection(set(gt_set))
-        print(shared_labels)
+        #print("Shared labels between draw_smooth and gt_smooth: {}".format(shared_labels))
         
         #Find the centers of each region in shared label
         draw_shared = self.find_label_centers(draw_smooth, shared_labels)
         gt_shared = self.find_label_centers(gt_smooth, shared_labels)
-        
-        #Find the centers of each region in unshared label
-        draw_unshared = self.find_label_centers(draw_smooth, set(draw_set)-shared_labels)
-        gt_unshared = self.find_label_centers(gt_smooth, set(gt_set)-shared_labels)
 
+        if relevant_mode == "unknown_count":
+            #Find the centers of each region in unshared label
+            draw_unshared = self.find_label_centers(draw_smooth, set(draw_set)-shared_labels)
+            gt_unshared = self.find_label_centers(gt_smooth, set(gt_set)-shared_labels)
+        else:
+            draw_unshared = set(draw_set) - shared_labels
+            gt_unshared = set(gt_set) - shared_labels
             
         #Resolve the unmatched pairs between draw_shared and gt_shared
         gt_draw_shared = self.pair_objects(draw_shared, gt_shared)
-        
-        #decouple the gt_draw_shared to a list of turples
-        shared_item_list = []
-        for key, value in gt_draw_shared.items():
-            for d_center,gt_center in zip(value['draw_center'],value['gt_center']):
-                shared_item_list.append((d_center, gt_center))
-        
-        #decouple the unshared objects to a list of turples
-        unshared_item_list = []
-        for key, value in draw_unshared.items():
-            unshared_item_list += value
-        for key, value in gt_unshared.items():
-            unshared_item_list += value
-            
-        #compute the numerator score
-        score = 0
-        for x in range(len(shared_item_list)):
-            for y in range(x+1, len(shared_item_list)):
-                score += self.relevant_score(shared_item_list[x], shared_item_list[y])
+        if len(gt_draw_shared) > 0:
+            #decouple the gt_draw_shared to a list of turples
+            shared_item_list = []
+            for key, value in gt_draw_shared.items():
+                for d_center,gt_center in zip(value['draw_center'],value['gt_center']):
+                    shared_item_list.append((d_center, gt_center))
+            if relevant_mode == "unknown_count":
+                #decouple the unshared objects to a list of turples
+                unshared_item_list = []
+                for key, value in draw_unshared.items():
+                    unshared_item_list += value
+                for key, value in gt_unshared.items():
+                    unshared_item_list += value
+            else:
+                unshared_item_list = list(draw_unshared)+list(gt_unshared)
 
-        #compute the denomenator
-        union = len(unshared_item_list)
-        #union = len(draw_unshared) + len(gt_unshared)
-        for key, value in gt_draw_shared.items():
-            union += value['max_num_objects']
-        intersection = len(shared_item_list)
-        
-        #print(score)
-        if intersection > 2:
-            final_score = score/(union*(intersection-1))
-        elif intersection == 1:
-            final_score = score/union
+            #compute the numerator score
+            score = 0
+            for x in range(len(shared_item_list)):
+                for y in range(x+1, len(shared_item_list)):
+                    score += self.relevant_score(shared_item_list[x], shared_item_list[y])
+
+            
+            #compute the denomenator
+            union = len(unshared_item_list)
+            #union = len(draw_unshared) + len(gt_unshared)
+            for key, value in gt_draw_shared.items():
+                union += value['max_num_objects']
+            #print("Union is: {}".format(union))
+            intersection = len(shared_item_list)
+            if intersection > 1:
+                #print(score)
+                final_score = score/(union*(intersection-1))
+            else:
+                final_score = score/union
         else:
             final_score = 0
         return final_score
-            
-    def gaugancodraw_eval_metrics(self,label_d, label_gt, n_class, g_smooth=True, g_smooth_thred=1000):
+
+    def gaugancodraw_eval_metrics(self, label_d, label_gt, n_class, d_smooth=True, g_smooth=True, g_smooth_thred=1000, score_1_mode ="pixelAccuracy", score_2_mode = "unknown"):        
+
         draw_smooth = label_d
         draw_smooth[np.where(draw_smooth == 147)] = 177
-        draw_smooth[np.where(draw_smooth == 154)] = 177
+        draw_smooth[np.where(draw_smooth == 154)] = 177        
+        
         if g_smooth:
             g_unique_class, g_unique_counts = np.unique(label_gt, return_counts=True)
             #Need to smooth gt_labels as well
 
             result = np.where(g_unique_counts > g_smooth_thred) #3000 is a bit too much
             dominant_class = g_unique_class[result].tolist()
+            print(dominant_class)
             gt_smooth = self.merge_noisy_pixels(label_gt, dominant_class)
             gt_smooth[np.where(gt_smooth == 147)] = 177
             gt_smooth[np.where(gt_smooth == 154)] = 177
         else:
             gt_smooth = label_gt
-        #compute mean_IOU
-        score_1 = self.mean_IoU(gt_smooth,draw_smooth, n_class)
         
-        #compute relevant_score
-        score_2 = self.relevant_eval_metrics(draw_smooth, gt_smooth)
-
+        if score_1_mode == "meanIoU":
+            score_1 = self.mean_IoU(gt_smooth,draw_smooth, n_class)
+        elif score_1_mode == "pixelAccuracy":
+            score_1 = self.pixel_accuracy(gt_smooth, draw_smooth, n_class)
+        
+        score_2 = self.relevant_eval_metrics(draw_smooth, gt_smooth, relevant_mode=score_2_mode)        
+    
         final_score = 2*score_1+3*score_2
-        return final_score    
+        return final_score   
 
     def pair_objects(self, draw_shared, gt_shared):
         """
