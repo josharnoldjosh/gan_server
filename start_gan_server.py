@@ -144,6 +144,44 @@ def get_score():
                 return result
     return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "co_draw":0}
 
+@app.route('/sandbox', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
+def sandbox():
+    if request.method == 'POST':              
+
+        # load data
+        data = request.form['file']
+        unique_id = request.form['unique_id']
+        turn_idx = request.form['turn_idx']
+        image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg  
+        py_data = data.replace('data:image/png;base64,','')
+
+        # Semantic label image directly from canvas
+        image = Image.open(BytesIO(base64.b64decode(py_data)))
+        image = image.convert('RGB').resize((350, 350))          
+
+        # test smooth
+        test = np.array(image)
+        smoothed_image = best_smooth_method(test) # should give us an array
+        test_smooth_output = Image.fromarray(np.uint8(smoothed_image))
+
+        # test the assert ==
+ 
+        # pass through seg2real
+        (image, scores, seg_img) = model.seg2real(smoothed_image, smoothed_image, False)
+
+        # save real        
+        seg_img.resize((350, 350))
+        
+        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg")
+        
+        # save synthetic & return
+        buffered = BytesIO()
+        image.save(buffered, format="png") 
+        img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')    
+        return img_str
+    else:
+        return "get request"
+
 @app.route('/', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def root():
     if request.method == 'POST':              
@@ -166,12 +204,10 @@ def root():
         test_smooth_output = Image.fromarray(np.uint8(smoothed_image))
         # test_smooth_output.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.png")
         
-         
         # continue
         # image.resize((350, 350)).save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.jpg")
         # (red, green, blue) = image.split()        
         # image = red.convert('L')
-        
 
         # get ground truth
         ground_truth = np.ones((350,350),dtype=int)
@@ -183,7 +219,7 @@ def root():
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[1], ground_truth.size[1])).resize((350, 350))  
 
         # pass through seg2real
-        (image, scores, seg_img) = model.seg2real(ground_truth, smoothed_image)
+        (image, scores, seg_img) = model.seg2real(ground_truth, smoothed_image, True)
 
         # save real        
         seg_img.resize((350, 350)).save("./saved_data/"+unique_id+"_"+turn_idx+"_real.jpg")
@@ -195,15 +231,37 @@ def root():
         with open(scores_file_path, 'w') as f:
             json.dump(scores, f)
             print("saved to", scores_file_path)
-        
+
+        # image.save("./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg")
+
         # save synthetic & return
         buffered = BytesIO()
-        image.save(buffered, format="png") 
-        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg")           
+        image.save(buffered, format="png")                 
         img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')    
         return img_str
     else:
         return "get request"
+
+@app.route('/test', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
+def test():           
+    
+    # Semantic label image directly from canvas
+    image = Image.open('2.png')
+    image = image.convert('RGB').resize((350, 350))      
+
+    # Smooth
+    test = np.array(image)
+    smoothed_image = best_smooth_method(test)
+    test_smooth_output = Image.fromarray(np.uint8(smoothed_image))    
+    
+
+    # get ground truth
+    ground_truth = Image.open('2_target.png').convert('L').resize((350, 350))
+
+    # pass through seg2real
+    (image, scores, seg_img) = model.seg2real(ground_truth, smoothed_image, True)
+
+    return scores
 
 if __name__ == '__main__':
     app.run(port=1234)

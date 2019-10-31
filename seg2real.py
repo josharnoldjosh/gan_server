@@ -152,7 +152,7 @@ class Seg2Real:
             j = 0
         return sample_matrix
         
-    def seg2real(self, ground_truth_image, seg_img):
+    def seg2real(self, ground_truth_image, seg_img, run_eval):
         # resize image
         ground_truth_image = ground_truth_image.resize((350, 350))
         # seg_img = seg_img.resize((350, 350))
@@ -178,7 +178,9 @@ class Seg2Real:
         print("seg_img", seg_img) 
 
         # calculate metrics
-        scores = self.calculate_metrics(ground_truth_image, seg_img)
+        scores = {}
+        if run_eval == True:
+            scores = self.calculate_metrics(ground_truth_image, seg_img)
 
         seg_img = Image.fromarray(np.uint8(seg_img))
 
@@ -207,10 +209,10 @@ class Seg2Real:
 
     def calculate_metrics(self, ground_truth_image, drawer_image):
         # return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "mean_iou_class":0}
-        print(ground_truth_image.shape, drawer_image.shape)
-        if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
-            print("SHAPES NOT EQUAL OR IMAGE DOES NOT EXIST")
-            return {"pixel_acc":0, "mean_acc":0, "mean_iou":0}
+        # print(ground_truth_image.shape, drawer_image.shape)
+        # if ground_truth_image[0][0] == 1 or ground_truth_image.shape != drawer_image.shape:
+            # print("SHAPES NOT EQUAL OR IMAGE DOES NOT EXIST")
+            # return {"pixel_acc":0, "mean_acc":0, "mean_iou":0}
         
         # np.savetxt('test1.txt', ground_truth_image, fmt='%d')
         # np.savetxt('test2.txt', drawer_image, fmt='%d')
