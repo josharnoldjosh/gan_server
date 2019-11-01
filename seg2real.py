@@ -152,7 +152,7 @@ class Seg2Real:
             j = 0
         return sample_matrix
         
-    def seg2real(self, ground_truth_image, seg_img):
+    def seg2real(self, ground_truth_image, seg_img, run_eval):
         # resize image
         ground_truth_image = ground_truth_image.resize((350, 350))
         # seg_img = seg_img.resize((350, 350))
@@ -173,12 +173,13 @@ class Seg2Real:
         #         else:                   
         #             seg_img[i][j] = 156
 
-        print("ground_truth_image", ground_truth_image)
-        print("——————")
+        print("ground_truth_image", ground_truth_image)        
         print("seg_img", seg_img) 
 
         # calculate metrics
-        scores = self.calculate_metrics(ground_truth_image, seg_img)
+        scores = {}
+        if run_eval == True:
+            scores = self.calculate_metrics(ground_truth_image, seg_img)
 
         seg_img = Image.fromarray(np.uint8(seg_img))
 
