@@ -3,34 +3,28 @@ from flask_cors import CORS
 import numpy as np
 from math import sqrt
 from io import StringIO
-
-# test
 from PIL import Image
 from io import BytesIO
 import base64
-
 import os
-
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="5"
-
 from seg2real import Seg2Real
-
 import time
 import json
-
 import cv2
 import matplotlib.pyplot as plt
 from skimage import io, morphology, measure
 from scipy import ndimage
 from scipy.ndimage import center_of_mass
 from scipy import ndimage
-
 import enchant
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 import string
 import re
+from adding_text import *
+import random
 
 # Init the server
 app = Flask(__name__)
@@ -169,7 +163,6 @@ def preprocess_utterance(utterance):
         if re.search(key, utterance):
             utterance = re.sub(key, "", utterance)
     return utterance
-
 
 def detect_non_englishwords(utterance):
     """
@@ -441,6 +434,30 @@ def english():
             print("ERROR", error)
             return {'data':[]}    
     return 'test'
+
+@app.route('/get_semantic', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
+def get_semantic():    
+
+    # Retrieve image name
+    image_name = request.form['image_name'].replace('.jpg', '_semantic.png')
+    print('test2', image_name)
+
+    print('landscape_target/'+image_name)
+
+    # Load image
+    image = cv2.imread('landscape_target/'+image_name)    
+
+    # Process image
+    text_mask = PutingText2Mask(image)
+
+    # Covnert to image
+    image = Image.fromarray(text_mask)
+
+    # Return image
+    buffered = BytesIO()
+    image.save(buffered, format="png")        
+    img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')
+    return img_str
     
 if __name__ == '__main__':
     app.run(port=1234)
