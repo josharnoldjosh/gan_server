@@ -7,8 +7,6 @@ from PIL import Image
 from io import BytesIO
 import base64
 import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="5"
 from seg2real import Seg2Real
 import time
 import json
@@ -25,6 +23,11 @@ import string
 import re
 from adding_text import *
 import random
+
+from gau_gan_api import GauGan
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="5"
 
 # Init the server
 app = Flask(__name__)
@@ -163,7 +166,6 @@ def preprocess_utterance(utterance):
         if re.search(key, utterance):
             utterance = re.sub(key, "", utterance)
     return utterance
-
 def detect_non_englishwords(utterance):
     """
     Given a english sentence, this function will give a list of non-english word in the utterance
@@ -180,7 +182,6 @@ def detect_non_englishwords(utterance):
         if (not eng_dict.check(w) or (w not in single_letter_word and len(w) == 1)) and w not in punctuation_string:
             non_english.append(w)
     return non_english
-
 def best_smooth_method(image,dominant_thred=1000):
     r,g,b = cv2.split(image)
 
@@ -244,6 +245,9 @@ def best_smooth_method(image,dominant_thred=1000):
 
     return label
 
+"""
+Gets the target image
+"""
 @app.route('/get_image', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_image():    
     image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg    
@@ -260,6 +264,9 @@ def get_image():
     img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')
     return img_str
 
+"""
+Get the image for "peeking"
+"""
 @app.route('/peek', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def peek():
     if request.method == 'POST':
@@ -285,6 +292,9 @@ def peek():
         return img_str                
     return ""
 
+"""
+Gets the score
+"""
 @app.route('/get_score', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_score():
     if request.method == 'POST':
@@ -304,6 +314,9 @@ def get_score():
                 return result
     return {"pixel_acc":0, "mean_acc":0, "mean_iou":0, "co_draw":0}
 
+"""
+A request to process and save an iamge
+"""
 @app.route('/', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def root():
     if request.method == 'POST':              
@@ -324,15 +337,8 @@ def root():
         test = np.array(image)
         smoothed_image = best_smooth_method(test) # should give us an array
         test_smooth_output = Image.fromarray(np.uint8(smoothed_image))
-        # test_smooth_output.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.png")
+        # test_smooth_output.save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label_smoothed.png") # added this to test saving smoothed image        
         
-         
-        # continue
-        # image.resize((350, 350)).save("./saved_data/"+unique_id+"_"+turn_idx+"_raw_label.jpg")
-        # (red, green, blue) = image.split()        
-        # image = red.convert('L')
-        
-
         # get ground truth
         ground_truth = np.ones((350,350),dtype=int)
         if image_name != "undefined":
@@ -365,22 +371,19 @@ def root():
     else:
         return "get request"
 
+"""
+A function used for testing new functions that are in development
+"""
 @app.route('/test', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
-def test():            
-    # Semantic label image directly from canvas
-    image = Image.open('3.png')
-    image = image.convert('RGB').resize((350, 350))  
-
-    test = np.array(image)
-    smoothed_image = best_smooth_method(test) # should give us an array
-    test_smooth_output = Image.fromarray(np.uint8(smoothed_image))
-
-    ground_truth = Image.open('3_target.png').convert('L')
+def test():
+    gan_api = GauGan()
+    gan_api.render('test_upload.png', 'afternoon')            
+    result = gan_api.save('final_result.jpg')
+    return result
     
-    # pass through seg2real
-    (image, scores, seg_img) = model.seg2real(ground_truth, smoothed_image, True)  
-    return scores
-
+"""
+A function used to just convert the image and return 
+"""
 @app.route('/sandbox', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def sandbox():
     if request.method == 'POST':              
@@ -389,36 +392,42 @@ def sandbox():
         data = request.form['file']
         unique_id = request.form['unique_id']
         turn_idx = request.form['turn_idx']
-        image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg  
-        py_data = data.replace('data:image/png;base64,','')
+        image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg 
+        image_style = request.form['imageStyle'] 
+        py_data = data.replace('data:image/png;base64,','')            
+
+        # Outputs
+        smooth_image_path = "./saved_data/"+unique_id+"_"+turn_idx+"_raw_label_smoothed.png"
+        synthetic_output_image_path = "./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg"
 
         # Semantic label image directly from canvas
         image = Image.open(BytesIO(base64.b64decode(py_data)))
-        image = image.convert('RGB').resize((350, 350))          
+        image = image.convert('RGB').resize((512, 512))          
 
-        # test smooth
-        test = np.array(image)
-        smoothed_image = best_smooth_method(test) # should give us an array
-        test_smooth_output = Image.fromarray(np.uint8(smoothed_image))
+        # test smooth        
+        smoothed_image = best_smooth_method(np.array(image)) # should give us an array
+        smooth_output = Image.fromarray(np.uint8(smoothed_image))        
+        smooth_output.save(smooth_image_path) # added this to test saving smoothed image        
 
-        # test the assert ==
- 
-        # pass through seg2real
-        (image, scores, seg_img) = model.seg2real(smoothed_image, smoothed_image, False)
+        # Load api
+        gan_api = GauGan()
 
-        # save real        
-        seg_img.resize((350, 350))
-        
-        image.save("./saved_data/"+unique_id+"_"+turn_idx+"_synthetic.jpg")
-        
-        # save synthetic & return
-        buffered = BytesIO()
-        image.save(buffered, format="png") 
-        img_str = 'data:image/png;base64,'+base64.b64encode(buffered.getvalue()).decode('ascii')    
-        return img_str
+        # Render image
+        gan_api.render(smooth_image_path, image_style)  
+
+        # Save it
+        gan_api.save(synthetic_output_image_path)
+
+        while gan_api.should_save_again(synthetic_output_image_path):
+            gan_api.save(synthetic_output_image_path)
+
+        return gan_api.image_data()
     else:
         return "get request"
 
+"""
+A function used to test whether or not a phrase is valid english to send
+"""
 @app.route('/english', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def english():
     if request.method == 'POST':                        
@@ -435,6 +444,9 @@ def english():
             return {'data':[]}    
     return 'test'
 
+"""
+Get the semantic version of an image
+"""
 @app.route('/get_semantic', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_semantic():    
 
