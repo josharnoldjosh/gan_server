@@ -251,9 +251,11 @@ Gets the target image
 @app.route('/get_image', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_image():    
     image_name = request.form['image_name'] # 8935320126_64a018d425_o.jpg    
+    image_name = 'landscape_target/'+image_name.split('/')[-1]
     print('test', image_name)    
-
-    image = Image.open('landscape_target/'+image_name)
+    # 'landscape_target/'+
+    image_name = 'landscape_target/'+image_name.split('/')[-1]
+    image = Image.open(image_name)
     if image.size[0] < image.size[1]:
         image = image.crop((0, 0, image.size[0], image.size[0]))
     else:
@@ -342,6 +344,7 @@ def root():
         # get ground truth
         ground_truth = np.ones((350,350),dtype=int)
         if image_name != "undefined":
+            image_name = image_name.split('/')[-1]
             ground_truth = Image.open('landscape_target/'+image_name.replace('.jpg', '_semantic.png')).convert('L')
             if ground_truth.size[0] < ground_truth.size[1]:
                 ground_truth = ground_truth.crop((0, 0, ground_truth.size[0], ground_truth.size[0])).resize((350, 350))
@@ -450,8 +453,9 @@ Get the semantic version of an image
 @app.route('/get_semantic', methods = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'])
 def get_semantic():    
 
-    # Retrieve image name
+    # Retrieve image name    
     image_name = request.form['image_name'].replace('.jpg', '_semantic.png')
+    image_name = image_name.split('/')[-1]
     print('test2', image_name)
 
     print('landscape_target/'+image_name)
